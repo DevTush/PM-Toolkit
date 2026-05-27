@@ -37,7 +37,8 @@ import "./App.css";
 
 // view: "input" | "dashboard" | module key
 function App() {
-  const [view, setView] = useState("input");
+  const [view, _setView] = useState("input");
+  const [viewHistory, setViewHistory] = useState(["input"]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [retryInfo, setRetryInfo] = useState(null); // { waitSec, attempt, maxRetries }
@@ -46,6 +47,50 @@ function App() {
   const [ideaCache, setIdeaCache] = useState(null); // { idea, domain, targetUsers }
   const [quickContextTarget, setQuickContextTarget] = useState(null); // module key for quick-generate
   const [apiKey, setApiKeyState] = useState(getApiKey());
+
+  // Navigation with history tracking
+  function navigateTo(newView) {
+    _setView(newView);
+    setViewHistory(prev => {
+      // Don't push duplicates
+      if (prev[prev.length - 1] === newView) return prev;
+      return [...prev, newView];
+    });
+    window.history.pushState({ view: newView }, "");
+  }
+
+  // Pop back to previous view in our stack
+  function goBackInHistory() {
+    setViewHistory(prev => {
+      if (prev.length <= 1) return prev;
+      const newStack = prev.slice(0, -1);
+      const prevView = newStack[newStack.length - 1];
+      _setView(prevView);
+      return newStack;
+    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  // Listen for browser back/forward buttons
+  useEffect(() => {
+    function onPopState(e) {
+      if (e.state?.view) {
+        _setView(e.state.view);
+        setViewHistory(prev => {
+          // Try to find this view in our history and truncate
+          const idx = prev.lastIndexOf(e.state.view);
+          if (idx >= 0) return prev.slice(0, idx + 1);
+          return [...prev, e.state.view];
+        });
+      } else {
+        goBackInHistory();
+      }
+    }
+    window.addEventListener("popstate", onPopState);
+    // Set initial state
+    window.history.replaceState({ view: "input" }, "");
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   function handleSaveApiKey(key) {
     setApiKey(key);
@@ -153,7 +198,7 @@ function App() {
     setStakeholderMap(d.stakeholderMap || null);
     setBrief(d.brief || null);
     setError(null);
-    setView("dashboard");
+    navigateTo("dashboard");
   }
 
   function handleDeleteProject(id) {
@@ -161,7 +206,8 @@ function App() {
   }
 
   const handleReset = useCallback(() => {
-    setView("input");
+    navigateTo("input");
+    setViewHistory(["input"]);
     setProjectId(null);
     setIdeaCache(null);
     setPrd(null);
@@ -202,7 +248,7 @@ function App() {
         } else {
           trackModuleTime(targetView);
         }
-        setView(targetView);
+        navigateTo(targetView);
       }
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
@@ -236,16 +282,16 @@ function App() {
 
   function handleOpenModule(key) {
     if (key === "prd") {
-      setView("prd");
+      navigateTo("prd");
       return;
     }
     if (STANDALONE_KEYS.includes(key)) {
-      setView(key);
+      navigateTo(key);
       return;
     }
     // If already generated, just show it
     if (modules[key]) {
-      setView(key);
+      navigateTo(key);
     } else {
       // Generate it
       generators[key]?.();
@@ -255,13 +301,13 @@ function App() {
   // Quick-generate: user picks a module from input page
   function handleOpenToolFromInput(key) {
     if (STANDALONE_KEYS.includes(key)) {
-      setView(key);
+      navigateTo(key);
       return;
     }
     // If we already have a PRD, use it directly — no need to ask again
     if (prd) {
       if (modules[key]) {
-        setView(key);
+        navigateTo(key);
       } else {
         generators[key]?.();
       }
@@ -269,7 +315,7 @@ function App() {
     }
     // No PRD yet — show QuickContext form for manual input
     setQuickContextTarget(key);
-    setView("quickContext");
+    navigateTo("quickContext");
   }
 
   // Build generators that accept a custom miniPrd instead of using the state prd
@@ -316,33 +362,35 @@ function App() {
   }
 
   function handleEditPRD() {
-    setView("editPRD");
+    navigateTo("editPRD");
   }
 
   function handleSavePRD(updatedPrd) {
     setPrd(updatedPrd);
     setPrdUpdatedAt(Date.now());
-    setView("dashboard");
+    navigateTo("dashboard");
   }
 
   function handleEditIdea() {
-    setView("input");
+    navigateTo("input");
   }
 
   function goToDashboard() {
-    setView("dashboard");
+    navigateTo("dashboard");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function goBack() {
-    // If we came from quick-context (mini PRD, no real dashboard), go to input
-    if (quickContextTarget && !ideaCache) {
+    // Use history stack to go to actual previous page
+    if (viewHistory.length > 1) {
+      window.history.back();
+      goBackInHistory();
+    } else if (quickContextTarget && !ideaCache) {
       setQuickContextTarget(null);
-      setView("input");
+      navigateTo("input");
     } else {
-      setView(prd ? "dashboard" : "input");
+      navigateTo(prd ? "dashboard" : "input");
     }
-    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function handleExportPDF(element) {

@@ -573,8 +573,10 @@ Power and Interest are 1-10 scale. Include 8-10 stakeholders across different te
 }
 
 export async function scoreResume(resumeText) {
-  const systemInstruction = "You are a senior PM hiring manager at a FAANG company.";
+  const systemInstruction = "You are a senior PM hiring manager at a FAANG company. IMPORTANT: ONLY evaluate the actual resume text provided. NEVER fabricate or hallucinate resume content. If the text is too short or clearly not a resume, say so honestly.";
   const prompt = `Score and evaluate this resume for Product Management roles.
+
+IMPORTANT: ONLY evaluate content explicitly present below. Do NOT invent details. If the text below is too short, garbled, or not a real resume, set overall_score below 20 and explain the issue in the summary.
 
 Resume Text:
 ${resumeText}
@@ -644,8 +646,14 @@ Score 0-100 for each category. Be brutally honest but constructive. Rewrite 2-3 
 }
 
 export async function evaluateLinkedIn(profileText) {
-  const systemInstruction = "You are a PM career coach who has reviewed 10,000+ LinkedIn profiles.";
+  const systemInstruction = "You are a PM career coach who has reviewed 10,000+ LinkedIn profiles. IMPORTANT: You CANNOT access URLs or links. You can ONLY analyze text that is directly provided to you. If the user only provides a URL without actual profile text, you MUST say so in your evaluation. NEVER fabricate or hallucinate profile content that was not given to you.";
   const prompt = `Evaluate this LinkedIn profile for PM positioning.
+
+IMPORTANT RULES:
+- ONLY evaluate content that is explicitly provided below. Do NOT invent or hallucinate any profile details.
+- If the input only contains a URL with no actual profile text, set overall_score to 0 and put "No profile text provided — please paste your actual LinkedIn profile content (headline, about, experience sections)" in every feedback field.
+- If the profile text is very short or vague, note that in your evaluation and score conservatively.
+- Base ALL scores and feedback ONLY on what is actually written below.
 
 LinkedIn Profile Text:
 ${profileText}
@@ -686,14 +694,21 @@ Return a JSON object with exactly this structure (no markdown, no code fences):
   ]
 }
 
-Be specific, actionable, and reference actual content from their profile. Score 0-100.`;
+Be specific, actionable, and reference actual content from their profile. Score 0-100. NEVER invent details not present in the input. If input is just a URL with no text, score 0 and explain that profile text must be pasted.`;
 
   return generateJSON(prompt, systemInstruction);
 }
 
 export async function generateProductTeardown(productName, productUrl) {
-  const systemInstruction = "You are a top product strategist.";
+  const systemInstruction = "You are a top product strategist. IMPORTANT: You CANNOT access URLs or websites. Only analyze products you have training data about. If you are not confident about a product, clearly state your uncertainty. NEVER fabricate specific metrics, ARR numbers, or details you don't actually know.";
   const prompt = `Generate a comprehensive product teardown analysis.
+
+IMPORTANT RULES:
+- You CANNOT access the URL below. Only use it as context for which product is being discussed.
+- Only analyze this product if you have real knowledge about it from your training data.
+- If you don't know this product well, be honest — say "Based on limited information" and keep scores conservative.
+- NEVER fabricate specific revenue numbers, user counts, or metrics. Use "Unknown" or "Estimated" prefixes when uncertain.
+- If the product name seems invalid or you have no knowledge of it, set all scores to 0 and explain in the summary.
 
 Product: ${productName}
 ${productUrl ? `URL/Context: ${productUrl}` : ""}

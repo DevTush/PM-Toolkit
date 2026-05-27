@@ -16,15 +16,13 @@ function ScoreBar({ label, score }) {
 }
 
 export default function LinkedInEvaluator({ onBack }) {
-  const [linkedinUrl, setLinkedinUrl] = useState("");
   const [profileText, setProfileText] = useState("");
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const isUrlValid = linkedinUrl.trim().length > 0 && /linkedin\.com\/in\//i.test(linkedinUrl);
   const isTextValid = profileText.trim().length >= 50;
-  const canSubmit = isUrlValid || isTextValid;
+  const canSubmit = isTextValid;
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -33,12 +31,7 @@ export default function LinkedInEvaluator({ onBack }) {
     setLoading(true);
     setError(null);
     try {
-      // Build the input: combine URL context + any pasted text
-      let input = "";
-      if (isUrlValid) input += `LinkedIn Profile URL: ${linkedinUrl.trim()}\n\n`;
-      if (profileText.trim()) input += profileText.trim();
-      if (!input.trim()) return;
-      const result = await evaluateLinkedIn(input);
+      const result = await evaluateLinkedIn(profileText.trim());
       setData(result);
     } catch (err) {
       if (err.name === "AbortError") { setLoading(false); return; }
@@ -58,30 +51,13 @@ export default function LinkedInEvaluator({ onBack }) {
       <div className="max-w-2xl mx-auto">
         <div className="text-center mb-8">
           <h2 className="text-3xl font-bold text-gray-900 mb-2">LinkedIn PM Evaluator</h2>
-          <p className="text-gray-500">Enter your LinkedIn URL or paste your profile text for expert PM feedback</p>
+          <p className="text-gray-500">Paste your LinkedIn profile text for expert PM feedback</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1.5">
-              LinkedIn Profile URL
-            </label>
-            <input
-              type="url"
-              value={linkedinUrl}
-              onChange={(e) => setLinkedinUrl(e.target.value)}
-              placeholder="https://www.linkedin.com/in/your-profile"
-              className="w-full p-4 rounded-xl bg-white border border-gray-200 text-sm text-gray-900 placeholder-gray-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:outline-none"
-            />
-          </div>
-          <div className="relative">
-            <div className="absolute inset-x-0 top-0 flex items-center justify-center -mt-2.5">
-              <span className="bg-gray-50 px-2 text-xs text-gray-400">and / or paste your profile text</span>
-            </div>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1.5">
-              Profile Text <span className="text-gray-400 font-normal">(optional if URL provided)</span>
+              Profile Text <span className="text-red-500 font-normal">*required (min 50 characters)</span>
             </label>
             <textarea
               value={profileText}
@@ -215,7 +191,7 @@ export default function LinkedInEvaluator({ onBack }) {
       </div>
 
       <div className="flex gap-3 pt-4">
-        <button onClick={() => { setData(null); setLinkedinUrl(""); setProfileText(""); }}
+        <button onClick={() => { setData(null); setProfileText(""); }}
           className="flex-1 py-3 rounded-xl font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 transition cursor-pointer">
           Evaluate Another
         </button>

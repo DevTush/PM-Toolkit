@@ -48,8 +48,11 @@ export default function ProductTeardownView({ onBack }) {
             placeholder="Product name (e.g. Notion, Stripe, Figma)"
             className="w-full p-4 rounded-xl bg-white border border-gray-200 text-sm text-gray-900 placeholder-gray-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:outline-none" />
           <input value={productUrl} onChange={(e) => setProductUrl(e.target.value)}
-            placeholder="URL or additional context (optional)"
+            placeholder="Additional context (optional — AI cannot access URLs)"
             className="w-full p-4 rounded-xl bg-white border border-gray-200 text-sm text-gray-900 placeholder-gray-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:outline-none" />
+          <div className="p-3 rounded-lg bg-amber-50 border border-amber-200">
+            <p className="text-xs text-amber-700">⚠️ AI cannot visit URLs. It analyzes products based on its training data. Use well-known product names for best results. Obscure or very new products may get inaccurate analysis.</p>
+          </div>
           <button type="submit" disabled={!productName.trim()}
             className="w-full py-3.5 rounded-xl font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 cursor-pointer">
             <Search className="w-4 h-4" /> Teardown Product
