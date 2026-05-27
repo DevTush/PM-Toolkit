@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  ArrowRight, Loader2, Trash2,
+  ArrowRight, Loader2, Trash2, Square, Upload,
   Users, BarChart3, BookOpen, CalendarDays, TrendingUp, FlaskConical,
   Star, DollarSign, Users2, Briefcase, Swords, Rocket, Target,
   FileSearch, UserCircle, Search, Clock, FileText, Layers, Zap,
@@ -60,10 +60,11 @@ const QUICK_MODULES = [
   { key: "teardown", label: "Product Teardown", desc: "Full strategic analysis", icon: Search, color: "bg-orange-50 text-orange-600" },
 ];
 
-export default function IdeaInput({ onSubmit, isLoading, savedProjects = [], onLoadProject, onDeleteProject, initialValues, onOpenTool, apiKey, onSaveApiKey, onClearApiKey }) {
+export default function IdeaInput({ onSubmit, onImportPRD, isLoading, onStop, savedProjects = [], onLoadProject, onDeleteProject, initialValues, onOpenTool, apiKey, onSaveApiKey, onClearApiKey }) {
   const [idea, setIdea] = useState(initialValues?.idea || "");
   const [domain, setDomain] = useState(initialValues?.domain || "");
   const [users, setUsers] = useState(initialValues?.targetUsers || "");
+  const [prdText, setPrdText] = useState("");
   const [tab, setTab] = useState("start");
 
   function handleExample(ex) { setIdea(ex.idea); setDomain(ex.domain); setUsers(ex.users); setTab("start"); }
@@ -81,22 +82,40 @@ export default function IdeaInput({ onSubmit, isLoading, savedProjects = [], onL
       {/* ─── Hero Section ─── */}
       <div className="max-w-4xl mx-auto text-center mb-14">
         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-600 text-[12px] font-medium mb-5">
-          <Zap className="w-3 h-3" /> A smarter workspace for product teams
+          <Zap className="w-3 h-3" /> AI-native PM operating system
         </div>
         <h1 className="text-[34px] sm:text-[44px] font-bold text-gray-900 tracking-tight leading-[1.12] mb-4">
           Clarity for every<br />product decision
         </h1>
         <p className="text-[16px] sm:text-[17px] text-gray-500 max-w-xl mx-auto leading-relaxed mb-8">
-          Generate PRDs, run impact simulations, build GTM playbooks, score resumes, and more — all in one workspace.
+          Generate PRDs, run impact simulations, build GTM playbooks, score resumes, and more — all powered by your product context.
         </p>
-        <div className="flex items-center justify-center gap-3">
+
+        {/* ─── 3 Entry Points ─── */}
+        <div className="max-w-3xl mx-auto grid sm:grid-cols-3 gap-3 mb-4">
           <button onClick={() => { setTab("start"); document.getElementById("workspace")?.scrollIntoView({ behavior: "smooth" }); }}
-            className="px-6 py-2.5 rounded-lg text-[14px] font-semibold text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm transition cursor-pointer flex items-center gap-2">
-            Start Building <ArrowRight className="w-4 h-4" />
+            className="p-4 rounded-xl bg-white border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/30 shadow-sm transition cursor-pointer group text-left">
+            <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center mb-3">
+              <Zap className="w-4.5 h-4.5" />
+            </div>
+            <p className="text-[13px] font-semibold text-gray-800 group-hover:text-indigo-600 transition mb-0.5">Generate a new PRD</p>
+            <p className="text-[11px] text-gray-400 leading-snug">Describe your idea and we'll create a full PRD with 13 downstream modules.</p>
+          </button>
+          <button onClick={() => { setTab("import"); document.getElementById("workspace")?.scrollIntoView({ behavior: "smooth" }); }}
+            className="p-4 rounded-xl bg-white border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/30 shadow-sm transition cursor-pointer group text-left">
+            <div className="w-9 h-9 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center mb-3">
+              <Upload className="w-4.5 h-4.5" />
+            </div>
+            <p className="text-[13px] font-semibold text-gray-800 group-hover:text-indigo-600 transition mb-0.5">Import your own PRD</p>
+            <p className="text-[11px] text-gray-400 leading-snug">Paste an existing PRD and unlock all modules instantly with your data.</p>
           </button>
           <button onClick={() => { setTab("modules"); document.getElementById("workspace")?.scrollIntoView({ behavior: "smooth" }); }}
-            className="px-6 py-2.5 rounded-lg text-[14px] font-medium text-gray-600 bg-white border border-gray-200 hover:border-gray-300 hover:bg-gray-50 shadow-sm transition cursor-pointer">
-            Browse Modules
+            className="p-4 rounded-xl bg-white border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/30 shadow-sm transition cursor-pointer group text-left">
+            <div className="w-9 h-9 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center mb-3">
+              <Layers className="w-4.5 h-4.5" />
+            </div>
+            <p className="text-[13px] font-semibold text-gray-800 group-hover:text-indigo-600 transition mb-0.5">Open a standalone tool</p>
+            <p className="text-[11px] text-gray-400 leading-snug">Resume scorer, LinkedIn evaluator, product teardown — no PRD needed.</p>
           </button>
         </div>
       </div>
@@ -141,6 +160,10 @@ export default function IdeaInput({ onSubmit, isLoading, savedProjects = [], onL
               className={`px-4 py-1.5 text-[13px] font-medium rounded-md transition cursor-pointer ${tab === "start" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
               New Product
             </button>
+            <button onClick={() => setTab("import")}
+              className={`px-4 py-1.5 text-[13px] font-medium rounded-md transition cursor-pointer ${tab === "import" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
+              Import PRD
+            </button>
             <button onClick={() => setTab("modules")}
               className={`px-4 py-1.5 text-[13px] font-medium rounded-md transition cursor-pointer ${tab === "modules" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
               Quick Modules
@@ -178,10 +201,24 @@ export default function IdeaInput({ onSubmit, isLoading, savedProjects = [], onL
                       className={inputCls} />
                   </div>
                 </div>
-                <button type="submit" disabled={isLoading || !idea.trim() || !domain || !users.trim() || !apiKey}
-                  className="w-full py-2.5 rounded-lg text-[14px] font-semibold text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center justify-center gap-2 cursor-pointer">
-                  {isLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating PRD...</> : <>Generate Full PRD <ArrowRight className="w-4 h-4" /></>}
-                </button>
+                {isLoading ? (
+                  <div className="flex gap-2">
+                    <div className="flex-1 py-2.5 rounded-lg text-[14px] font-semibold text-white bg-indigo-600 flex items-center justify-center gap-2 opacity-80">
+                      <Loader2 className="w-4 h-4 animate-spin" /> Generating PRD...
+                    </div>
+                    {onStop && (
+                      <button type="button" onClick={onStop}
+                        className="px-4 py-2.5 rounded-lg text-[14px] font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 transition cursor-pointer flex items-center gap-1.5">
+                        <Square className="w-3.5 h-3.5" /> Stop
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <button type="submit" disabled={!idea.trim() || !domain || !users.trim() || !apiKey}
+                    className="w-full py-2.5 rounded-lg text-[14px] font-semibold text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center justify-center gap-2 cursor-pointer">
+                    Generate Full PRD <ArrowRight className="w-4 h-4" />
+                  </button>
+                )}
               </form>
             </div>
 
@@ -220,6 +257,86 @@ export default function IdeaInput({ onSubmit, isLoading, savedProjects = [], onL
                     </div>
                   ))}
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ─── Tab: Import PRD ─── */}
+        {tab === "import" && onImportPRD && (
+          <div className="grid lg:grid-cols-5 gap-6">
+            <div className="lg:col-span-3 bg-white rounded-2xl border border-gray-200 p-6 sm:p-8 shadow-sm">
+              <div className="flex items-center gap-2 mb-1">
+                <Upload className="w-4 h-4 text-indigo-600" />
+                <h3 className="text-[16px] font-semibold text-gray-900">Import your own PRD</h3>
+              </div>
+              <p className="text-[13px] text-gray-400 mb-6">Paste your existing PRD and we'll parse it so all 13 modules work with your data.</p>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-[13px] font-medium text-gray-700 mb-1.5">PRD Content *</label>
+                  <textarea
+                    value={prdText}
+                    onChange={(e) => setPrdText(e.target.value)}
+                    rows={12}
+                    placeholder={"Paste your PRD here...\n\nExample:\n# Product Name\n## Problem Statement\nDescribe the problem...\n\n## Target Users\n- Segment 1\n- Segment 2\n\n## Features\n1. Feature A - description\n2. Feature B - description\n\n## Goals & Metrics\n- Goal 1: target value\n- Goal 2: target value"}
+                    className={`${inputCls} resize-none font-mono text-[13px]`}
+                  />
+                  <p className="text-[11px] text-gray-400 mt-1.5">Accepts any format — markdown, plain text, bullet points, or structured docs. Minimum 100 characters.</p>
+                </div>
+
+                {isLoading ? (
+                  <div className="flex gap-2">
+                    <div className="flex-1 py-2.5 rounded-lg text-[14px] font-semibold text-white bg-indigo-600 flex items-center justify-center gap-2 opacity-80">
+                      <Loader2 className="w-4 h-4 animate-spin" /> Parsing PRD...
+                    </div>
+                    {onStop && (
+                      <button type="button" onClick={onStop}
+                        className="px-4 py-2.5 rounded-lg text-[14px] font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 transition cursor-pointer flex items-center gap-1.5">
+                        <Square className="w-3.5 h-3.5" /> Stop
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => prdText.trim().length >= 100 && apiKey && onImportPRD(prdText.trim())}
+                    disabled={prdText.trim().length < 100 || !apiKey}
+                    className="w-full py-2.5 rounded-lg text-[14px] font-semibold text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center justify-center gap-2 cursor-pointer">
+                    Import & Parse PRD <ArrowRight className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="lg:col-span-2 space-y-4">
+              <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+                <h4 className="text-[13px] font-semibold text-gray-900 mb-3">What happens next</h4>
+                <div className="space-y-2.5">
+                  {[
+                    { label: "AI parses your PRD", sub: "Extracts title, features, goals, audience, metrics" },
+                    { label: "Dashboard unlocks", sub: "All 13 modules become available instantly" },
+                    { label: "Modules use your data", sub: "Sprint plans, OKRs, experiments — all based on your PRD" },
+                    { label: "Iterate freely", sub: "Regenerate any module or edit the parsed PRD" },
+                  ].map(({ label, sub }) => (
+                    <div key={label} className="flex items-start gap-2.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-[13px] font-medium text-gray-700">{label}</p>
+                        <p className="text-[11px] text-gray-400">{sub}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-indigo-50 rounded-xl border border-indigo-100 p-5">
+                <h4 className="text-[13px] font-semibold text-indigo-900 mb-2">Supported formats</h4>
+                <ul className="space-y-1.5 text-[12px] text-indigo-700">
+                  <li>• Plain text or markdown PRDs</li>
+                  <li>• Confluence / Notion exports</li>
+                  <li>• Google Docs copy-paste</li>
+                  <li>• Any structured product document</li>
+                </ul>
               </div>
             </div>
           </div>

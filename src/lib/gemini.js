@@ -18,11 +18,29 @@ export function hasApiKey() {
   return !!getApiKey();
 }
 
-function getModel() {
+// Abort controller for cancelling in-flight requests
+let _currentAbort = null;
+
+export function cancelCurrentRequest() {
+  if (_currentAbort) {
+    _currentAbort.abort();
+    _currentAbort = null;
+  }
+}
+
+function createAbortController() {
+  cancelCurrentRequest();
+  _currentAbort = new AbortController();
+  return _currentAbort;
+}
+
+function getModel(systemInstruction) {
   const key = getApiKey();
   if (!key) throw new Error("No Gemini API key configured. Please add your API key to continue.");
   const genAI = new GoogleGenerativeAI(key);
-  return genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+  const config = { model: "gemini-3.1-flash-lite" };
+  if (systemInstruction) config.systemInstruction = systemInstruction;
+  return genAI.getGenerativeModel(config);
 }
 
 function cleanJSON(text) {
@@ -34,11 +52,13 @@ function cleanJSON(text) {
 }
 
 // Retry wrapper with exponential backoff for rate-limit (429) errors
-async function withRetry(fn, maxRetries = 3) {
+async function withRetry(fn, signal, maxRetries = 3) {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (signal?.aborted) throw new DOMException("Request cancelled", "AbortError");
     try {
       return await fn();
     } catch (err) {
+      if (err.name === "AbortError") throw err;
       const msg = err?.message || "";
       const is429 = msg.includes("429") || msg.includes("quota") || msg.includes("rate") || msg.includes("Resource has been exhausted");
       if (!is429 || attempt === maxRetries) throw err;
@@ -50,22 +70,33 @@ async function withRetry(fn, maxRetries = 3) {
 
       // Dispatch a custom event so UI can show countdown
       window.dispatchEvent(new CustomEvent("api-retry", { detail: { waitSec, attempt: attempt + 1, maxRetries } }));
-      await new Promise(r => setTimeout(r, waitSec * 1000));
+      // Cancellable sleep
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(resolve, waitSec * 1000);
+        signal?.addEventListener("abort", () => { clearTimeout(timer); reject(new DOMException("Request cancelled", "AbortError")); }, { once: true });
+      });
     }
   }
 }
 
 // Generate content with auto-retry and JSON parsing
-async function generateJSON(prompt) {
-  const model = getModel();
-  return withRetry(async () => {
-    const result = await model.generateContent(prompt);
-    return JSON.parse(cleanJSON(result.response.text()));
-  });
+async function generateJSON(prompt, systemInstruction) {
+  const model = getModel(systemInstruction);
+  const controller = createAbortController();
+  const signal = controller.signal;
+  try {
+    return await withRetry(async () => {
+      const result = await model.generateContent(prompt, { signal });
+      return JSON.parse(cleanJSON(result.response.text()));
+    }, signal);
+  } finally {
+    if (_currentAbort === controller) _currentAbort = null;
+  }
 }
 
 export async function generatePRD(idea, domain, targetUsers) {
-  const prompt = `You are a senior AI Product Manager at a top tech company. Generate a comprehensive PRD (Product Requirements Document) for the following product idea.
+  const systemInstruction = "You are a senior AI Product Manager at a top tech company.";
+  const prompt = `Generate a comprehensive PRD (Product Requirements Document) for the following product idea.
 
 Product Idea: ${idea}
 Domain: ${domain}
@@ -102,11 +133,53 @@ Return a JSON object with exactly this structure (no markdown, no code fences):
 
 Include 4-5 goals, 6-8 features, 4-5 success metrics, 4-5 risks, 3-4 technical considerations, 3 channels, and 2-3 competitors. Be specific with numbers and realistic targets.`;
 
-  return generateJSON(prompt);
+  return generateJSON(prompt, systemInstruction);
+}
+
+export async function parsePRDText(rawText) {
+  const systemInstruction = "You are a senior AI Product Manager who excels at structuring product documents.";
+  const prompt = `Parse the following PRD (Product Requirements Document) text into a structured JSON format. Extract as much information as you can. If certain fields are not mentioned, infer reasonable values from context.
+
+PRD Text:
+${rawText}
+
+Return a JSON object with exactly this structure (no markdown, no code fences):
+{
+  "title": "Product name",
+  "elevator_pitch": "One-liner pitch (max 20 words)",
+  "problem_statement": "What problem does this solve (2-3 sentences)",
+  "target_audience": ["audience segment 1", "audience segment 2"],
+  "goals": [
+    {"goal": "Goal description", "metric": "How to measure it", "target": "Specific target value"}
+  ],
+  "features": [
+    {"name": "Feature name", "description": "What it does", "priority": "P0|P1|P2", "effort": "Low|Medium|High"}
+  ],
+  "success_metrics": [
+    {"metric": "Metric name", "current_baseline": "Current value or N/A", "target": "Target value", "timeframe": "e.g. 6 months"}
+  ],
+  "risks": [
+    {"risk": "Risk description", "impact": "High|Medium|Low", "mitigation": "How to mitigate"}
+  ],
+  "technical_considerations": ["consideration 1", "consideration 2"],
+  "go_to_market": {
+    "strategy": "GTM strategy description",
+    "channels": ["channel 1", "channel 2"],
+    "timeline": "Launch timeline"
+  },
+  "competitive_landscape": [
+    {"competitor": "Name", "strength": "Their advantage", "our_edge": "Our differentiation"}
+  ]
+}
+
+Extract real data from the text. Fill in all arrays with at least 2-3 items each. If the PRD doesn't mention something, make a reasonable inference based on the product described.`;
+
+  return generateJSON(prompt, systemInstruction);
 }
 
 export async function runPrioritization(features, framework) {
-  const prompt = `You are a product prioritization expert. Score each feature using the ${framework} framework.
+  const systemInstruction = "You are a product prioritization expert.";
+  const prompt = `Score each feature using the ${framework} framework.
 
 Features:
 ${JSON.stringify(features, null, 2)}
@@ -134,11 +207,12 @@ For MoSCoW: Categorize each feature.
 
 Be realistic and opinionated.`;
 
-  return generateJSON(prompt);
+  return generateJSON(prompt, systemInstruction);
 }
 
 export async function simulateImpact(prd) {
-  const prompt = `You are a product analytics expert. Based on this PRD, simulate the expected business impact over 12 months.
+  const systemInstruction = "You are a product analytics expert.";
+  const prompt = `Based on this PRD, simulate the expected business impact over 12 months.
 
 PRD Summary:
 - Title: ${prd.title}
@@ -179,11 +253,12 @@ Return a JSON object with exactly this structure (no markdown, no code fences):
 
 Use realistic numbers. Users should be realistic for the domain. Revenue in USD. Engagement rate as percentage 0-100.`;
 
-  return generateJSON(prompt);
+  return generateJSON(prompt, systemInstruction);
 }
 
 export async function generateStakeholderBrief(prd, prioritization, impact) {
-  const prompt = `You are a senior PM preparing a stakeholder brief for leadership. Create a concise, executive-ready brief.
+  const systemInstruction = "You are a senior PM preparing a stakeholder brief for leadership.";
+  const prompt = `Create a concise, executive-ready brief.
 
 PRD: ${JSON.stringify(prd)}
 Prioritization: ${JSON.stringify(prioritization)}
@@ -209,11 +284,12 @@ Return a JSON object with exactly this structure (no markdown, no code fences):
   "decision_needed": "What decision you need from stakeholders"
 }`;
 
-  return generateJSON(prompt);
+  return generateJSON(prompt, systemInstruction);
 }
 
 export async function generatePersonas(prd) {
-  const prompt = `You are a UX research expert. Based on this product, generate 3 detailed user personas with empathy maps.
+  const systemInstruction = "You are a UX research expert.";
+  const prompt = `Based on this product, generate 3 detailed user personas with empathy maps.
 
 Product: ${prd.title}
 Problem: ${prd.problem_statement}
@@ -244,11 +320,12 @@ Return a JSON object with exactly this structure (no markdown, no code fences):
 
 Make each persona distinctly different — vary demographics, motivations, and tech comfort. Be specific and realistic.`;
 
-  return generateJSON(prompt);
+  return generateJSON(prompt, systemInstruction);
 }
 
 export async function generateUserStories(prd) {
-  const prompt = `You are an agile product expert. Generate user stories with acceptance criteria for this product.
+  const systemInstruction = "You are an agile product expert.";
+  const prompt = `Generate user stories with acceptance criteria for this product.
 
 Product: ${prd.title}
 Features: ${JSON.stringify(prd.features)}
@@ -281,11 +358,12 @@ Return a JSON object with exactly this structure (no markdown, no code fences):
 
 Generate 3-4 epics with 3-4 stories each. Use Fibonacci points (1,2,3,5,8,13). Include realistic edge cases.`;
 
-  return generateJSON(prompt);
+  return generateJSON(prompt, systemInstruction);
 }
 
 export async function generateSprintPlan(prd, stories) {
-  const prompt = `You are an engineering manager. Create a sprint-by-sprint execution plan.
+  const systemInstruction = "You are an engineering manager.";
+  const prompt = `Create a sprint-by-sprint execution plan.
 
 Product: ${prd.title}
 User Stories: ${JSON.stringify(stories)}
@@ -320,11 +398,12 @@ Return a JSON object with exactly this structure (no markdown, no code fences):
 
 Plan 5-8 sprints. Group them into 3-4 phases. Be realistic about velocity.`;
 
-  return generateJSON(prompt);
+  return generateJSON(prompt, systemInstruction);
 }
 
 export async function designExperiments(prd) {
-  const prompt = `You are a growth/experimentation PM. Design A/B experiments for this product.
+  const systemInstruction = "You are a growth/experimentation PM.";
+  const prompt = `Design A/B experiments for this product.
 
 Product: ${prd.title}
 Features: ${prd.features.map(f => f.name).join(", ")}
@@ -359,11 +438,12 @@ Return a JSON object with exactly this structure (no markdown, no code fences):
 
 Design 4-5 experiments. Be specific with hypotheses and sample sizes. Mix quick wins and strategic bets.`;
 
-  return generateJSON(prompt);
+  return generateJSON(prompt, systemInstruction);
 }
 
 export async function analyzeMetricsFramework(prd) {
-  const prompt = `You are a product analytics lead. Build a North Star metrics framework for this product.
+  const systemInstruction = "You are a product analytics lead.";
+  const prompt = `Build a North Star metrics framework for this product.
 
 Product: ${prd.title}
 Goals: ${prd.goals.map(g => g.goal).join(", ")}
@@ -403,11 +483,12 @@ Return a JSON object with exactly this structure (no markdown, no code fences):
 
 Include 4-5 input metrics, 4-5 dashboard sections, and 3-4 alert rules.`;
 
-  return generateJSON(prompt);
+  return generateJSON(prompt, systemInstruction);
 }
 
 export async function analyzePricing(prd) {
-  const prompt = `You are a monetization strategist. Design a pricing strategy for this product.
+  const systemInstruction = "You are a monetization strategist.";
+  const prompt = `Design a pricing strategy for this product.
 
 Product: ${prd.title}
 Problem: ${prd.problem_statement}
@@ -449,11 +530,12 @@ Return a JSON object with exactly this structure (no markdown, no code fences):
 
 Include 3-4 tiers, 2-3 competitors, and 2-3 pricing experiments. Be specific with dollar amounts.`;
 
-  return generateJSON(prompt);
+  return generateJSON(prompt, systemInstruction);
 }
 
 export async function mapStakeholders(prd) {
-  const prompt = `You are a PM lead managing cross-functional stakeholders. Map stakeholders for this product launch.
+  const systemInstruction = "You are a PM lead managing cross-functional stakeholders.";
+  const prompt = `Map stakeholders for this product launch.
 
 Product: ${prd.title}
 
@@ -487,11 +569,12 @@ Return a JSON object with exactly this structure (no markdown, no code fences):
 
 Power and Interest are 1-10 scale. Include 8-10 stakeholders across different teams. 5-6 RACI activities. 4-5 communication items.`;
 
-  return generateJSON(prompt);
+  return generateJSON(prompt, systemInstruction);
 }
 
 export async function scoreResume(resumeText) {
-  const prompt = `You are a senior PM hiring manager at a FAANG company. Score and evaluate this resume for Product Management roles.
+  const systemInstruction = "You are a senior PM hiring manager at a FAANG company.";
+  const prompt = `Score and evaluate this resume for Product Management roles.
 
 Resume Text:
 ${resumeText}
@@ -557,11 +640,12 @@ Return a JSON object with exactly this structure (no markdown, no code fences):
 
 Score 0-100 for each category. Be brutally honest but constructive. Rewrite 2-3 weak bullets. Suggest 4-5 action items.`;
 
-  return generateJSON(prompt);
+  return generateJSON(prompt, systemInstruction);
 }
 
 export async function evaluateLinkedIn(profileText) {
-  const prompt = `You are a PM career coach who has reviewed 10,000+ LinkedIn profiles. Evaluate this LinkedIn profile for PM positioning.
+  const systemInstruction = "You are a PM career coach who has reviewed 10,000+ LinkedIn profiles.";
+  const prompt = `Evaluate this LinkedIn profile for PM positioning.
 
 LinkedIn Profile Text:
 ${profileText}
@@ -604,11 +688,12 @@ Return a JSON object with exactly this structure (no markdown, no code fences):
 
 Be specific, actionable, and reference actual content from their profile. Score 0-100.`;
 
-  return generateJSON(prompt);
+  return generateJSON(prompt, systemInstruction);
 }
 
 export async function generateProductTeardown(productName, productUrl) {
-  const prompt = `You are a top product strategist. Generate a comprehensive product teardown analysis.
+  const systemInstruction = "You are a top product strategist.";
+  const prompt = `Generate a comprehensive product teardown analysis.
 
 Product: ${productName}
 ${productUrl ? `URL/Context: ${productUrl}` : ""}
@@ -660,11 +745,12 @@ Return a JSON object with exactly this structure (no markdown, no code fences):
 
 Be specific and opinionated. Include 3-4 things you'd change. Rate 1-10 scale.`;
 
-  return generateJSON(prompt);
+  return generateJSON(prompt, systemInstruction);
 }
 
 export async function generateBattlecards(prd) {
-  const prompt = `You are a competitive intelligence analyst. Create sales battlecards for this product vs its competitors.
+  const systemInstruction = "You are a competitive intelligence analyst.";
+  const prompt = `Create sales battlecards for this product vs its competitors.
 
 Product: ${prd.title}
 Problem: ${prd.problem_statement}
@@ -711,11 +797,12 @@ Return a JSON object with exactly this structure (no markdown, no code fences):
 
 Generate battlecards for 2-3 competitors. Include 2-3 objections per competitor. 4-5 feature comparisons.`;
 
-  return generateJSON(prompt);
+  return generateJSON(prompt, systemInstruction);
 }
 
 export async function generateGTMPlaybook(prd) {
-  const prompt = `You are a go-to-market strategist who has launched 50+ products. Create a comprehensive GTM playbook.
+  const systemInstruction = "You are a go-to-market strategist who has launched 50+ products.";
+  const prompt = `Create a comprehensive GTM playbook.
 
 Product: ${prd.title}
 Problem: ${prd.problem_statement}
@@ -775,11 +862,12 @@ Return a JSON object with exactly this structure (no markdown, no code fences):
 
 Include 3-4 messaging rows, 4-5 channels, 6-8 timeline entries, and 3-4 risks.`;
 
-  return generateJSON(prompt);
+  return generateJSON(prompt, systemInstruction);
 }
 
 export async function generateOKRs(prd) {
-  const prompt = `You are a VP of Product setting OKRs. Generate cascading OKRs for this product.
+  const systemInstruction = "You are a VP of Product setting OKRs.";
+  const prompt = `Generate cascading OKRs for this product.
 
 Product: ${prd.title}
 Goals: ${prd.goals.map(g => g.goal).join(", ")}
@@ -836,5 +924,20 @@ Return a JSON object with exactly this structure (no markdown, no code fences):
 
 Generate 2-3 objectives per team level. Use specific, measurable targets. Mix leading and lagging indicators.`;
 
-  return generateJSON(prompt);
+  return generateJSON(prompt, systemInstruction);
+}
+
+// Section-level regeneration: regenerate just one section of a module's output
+export async function regenerateSection(moduleKey, sectionKey, currentData, prd) {
+  const systemInstruction = "You are a senior AI Product Manager. Regenerate ONLY the requested section with fresh, improved content. Keep the same JSON structure.";
+  const prompt = `You previously generated a ${moduleKey} module for the product "${prd?.title || "Unknown"}".
+
+Here is the current full output (for context):
+${JSON.stringify(currentData, null, 2)}
+
+Now regenerate ONLY the "${sectionKey}" section/field. Return ONLY the JSON value for that field — not the entire object. Keep the same structure as the original value for "${sectionKey}" but generate fresh, improved content.
+
+Important: Return valid JSON only. No markdown, no code fences. Just the raw JSON value for "${sectionKey}".`;
+
+  return generateJSON(prompt, systemInstruction);
 }
